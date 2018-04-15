@@ -1,25 +1,175 @@
+# Reproducible Research
+## Peer-graded Assignment: Course Project 1
+
 ---
 title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+author: "Valentina Grouverman"
+date: "4/15/2018"
+output: html_document
 ---
+### Project description
 
+Project dataset: https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip
 
-## Loading and preprocessing the data
+The dataset is stored in a comma-separated-value (CSV) file and 
+there are a total of 17,568 observations in this dataset.
 
+The variables included in this dataset are:
 
+1. steps: Number of steps taking in a 5-minute interval (missing values are coded as NA)
+2. date: The date on which the measurement was taken in YYY-MM-DD format
+3. interval: Identifier for the 5-minute interval in which measument was taken
 
-## What is mean total number of steps taken per day?
+### Downloading and reading data
 
+```{r loadingReadingData, echo=TRUE}
+fileUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+destZip = "./activity.zip"
 
+if(!file.exists("./activity.csv")){
+     download.file(fileUrl, destfile = destZip) 
+     unzip(destZip)
+     file.remove(destZip)
+}
 
-## What is the average daily activity pattern?
+if(!exists("Activity")){
+     Activity <- read.csv("./activity.csv", header = TRUE)
+}
+```
 
+### Q1: What is mean total number of steps taken per day?
+#### Calculate and report the mean and median of the total number of steps taken per day.
+```{r Q1, echo=TRUE}
+ActivitySplitDate <- split(Activity, as.factor(Activity$date))
+Steps_Date <- sapply(ActivitySplitDate, function(x) sum(x$steps, na.rm=T))
 
+mean_display = round(mean(sapply(ActivitySplitDate, function(x) sum(x$steps, na.rm = TRUE))))
+median_display = round(median(sapply(ActivitySplitDate, function(x) sum(x$steps, na.rm = TRUE))))
 
-## Imputing missing values
+hist(Steps_Date, 
+     main = "Number of steps by Date",
+     xlab = "Number of steps", 
+     col = "grey",
+     breaks = 30,
+     cex.main = 1)
 
+abline(v = mean_display, lwd = 2, col = "blue")
+abline(v = median_display, lwd = 2, col = "green")
 
+legend("topright", 
+       lty = 1,
+       lwd = 2,
+       col = c("blue","green"),
+       cex = .5,
+       legend = c(paste("Mean equals ", mean_display),
+                  paste("Median equals ", median_display))
+)
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+### Q2: What is the average daily activity pattern?
+#### Which 5-minute interval, on averageacross all the days in the dataset, contains the maximum number of steps?
+```{r Q2, echo=TRUE}
+library(data.table)
+ActivityTbl = data.table(Activity)
+Steps_Interval = 
+     ActivityTbl[, list(StepsMean = mean(steps, na.rm = T)), by = interval]
+
+with(Steps_Interval,
+     plot(interval, 
+          StepsMean, 
+          type = "l",
+          lwd = 1.5,
+          main = "Average number of steps by Interval",
+          xlab = "5-minute Interval",
+          ylab = "Average number of steps across all days")
+)
+
+## to get a recod with max value of the StepsMean
+MaxStepsInterval = Steps_Interval[which.max(StepsMean), ]
+## to display it on the plot
+points(MaxStepsInterval$interval, 
+       MaxStepsInterval$StepsMean, 
+       col="red",
+       pch = 19)
+
+legend("topright",
+       legend = 
+            c(paste("5-minute interval ",MaxStepsInterval$interval), 
+              paste("with maximum number of steps ",round(MaxStepsInterval$StepsMean))),
+       cex = .5
+)
+```
+
+### Q3: Imputing missing values
+#### What is the impact of imputing missing data on the estimates of the total daily number of steps?
+```{r Q3, echo=TRUE}
+## to merge tables by interval
+setkey(ActivityTbl, interval)
+setkey(Steps_Interval, interval)
+
+## to incorporate StepsMean value to the table
+MisStepsTbl = ActivityTbl[Steps_Interval]
+MisStepsTbl$steps <- ifelse(test = is.na(MisStepsTbl$steps), 
+                            yes = round(MisStepsTbl$StepsMean), 
+                            no = MisStepsTbl$steps)
+
+## to confirm that we don't have NA in steps
+# sum(is.na(MisStepsTbl$steps))
+
+AlteredStepsSplitDate <- split(MisStepsTbl, as.factor(MisStepsTbl$date))
+AlteredSteps_Date <- sapply(AlteredStepsSplitDate, function(x) sum(x$steps, na.rm=T))
+
+mean_display = round(mean(sapply(AlteredStepsSplitDate, function(x) sum(x$steps, na.rm = TRUE))))
+median_display = round(median(sapply(AlteredStepsSplitDate, function(x) sum(x$steps, na.rm = TRUE))))
+
+hist(AlteredSteps_Date, 
+     main = "Imputing missing values: number of steps by Date",
+     xlab = "Number of steps", 
+     col = "grey",
+     breaks = 30,
+     cex.main = 1)
+
+abline(v = mean_display, lwd = 2, col = "blue")
+abline(v = median_display, lwd = 2, col = "green")
+
+legend("topright", 
+       lty = 1,
+       lwd = 2,
+       col = c("blue","green"),
+       cex = .5,
+       legend = c(paste("Mean equals ", mean_display),
+                  paste("Median equals ", median_display))
+)
+```
+
+##### Conclusion: 
+After replacing missing values with the mean value of the relevant interval, the mean and the median became almost equal to each other.
+
+### Q4: Are there differences in activity patterns between weekdays and weekends?
+```{r Q4, echo=TRUE}
+MisStepsTbl$week_days = weekdays(as.Date(MisStepsTbl$date))
+MisStepsTbl$isWeekend <- ifelse(test = (MisStepsTbl$week_days %in% c("Saturday","Sunday")), 
+                                   yes = "Weekends", 
+                                   no = "Weekdays")
+Steps_IntervalDate = 
+     MisStepsTbl[, list(StepsMean = mean(steps, na.rm = T)), by = list(interval,isWeekend)]
+     
+library(lattice)
+xyplot(StepsMean ~ interval|isWeekend,
+       data = MisStepsTbl,
+       type = "l",
+       xlab = "Intervals",
+       ylab = "Average number of steps",
+       layout = c(1,2))
+
+xyplot(StepsMean ~ interval|isWeekend,
+       data = MisStepsTbl,
+       type = "l",
+       xlab = "Intervals",
+       ylab = "Average number of steps",
+       layout = c(2,1))
+
+```
+
+##### Conclusion: 
+Plots don't show a lot of differences.
